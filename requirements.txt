@@ -1,0 +1,7 @@
+pygame-ce
+python-vlc
+spotipy
+aiohttp
+certifi
+python-decouple
+numpy
