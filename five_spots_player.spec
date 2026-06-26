@@ -33,6 +33,9 @@ a = Analysis(
     noarchive=False,
 )
 
+# Exclude VLC libraries from bundle — they must stay system-side so VLC can find its plugins.
+a.binaries = [b for b in a.binaries if not b[0].startswith(('libvlc.so', 'libvlccore.so'))]
+
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
 exe = EXE(

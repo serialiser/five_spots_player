@@ -78,13 +78,22 @@ pip install -r requirements.txt
 python main.py
 ```
 
-## Build executable (Windows)
+## Build executable
 
 Requires [VLC media player](https://www.videolan.org/vlc/) (64-bit) installed and PyInstaller:
+
+### Windows
 
 ```bash
 pip install pyinstaller
 pyinstaller five_spots_player.spec
+```
+
+### Linux
+
+```bash
+venv/bin/pip install pyinstaller
+venv/bin/pyinstaller --clean -y five_spots_player.spec
 ```
 
 The output is in `dist/five-spots-player/`. 
