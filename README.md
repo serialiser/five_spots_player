@@ -51,6 +51,7 @@ Open the `.env` file (or create one if it not exists) in the root folder next to
 RADIOFRANCE_API_TOKEN=your-radiofrance-api-token
 SPOTIPY_CLIENT_ID=your-spotify-client-id
 ```
+Then you can toggle on "Connect to Spoptify" in the Settings screen and restart the app.
 
 **Enjoy!**
 
@@ -83,7 +84,7 @@ Requires [VLC media player](https://www.videolan.org/vlc/) (64-bit) installed an
 
 ```bash
 pip install pyinstaller
-pyinstaller five_spots_player.spec --noconfirm
+pyinstaller five_spots_player.spec
 ```
 
 The output is in `dist/five-spots-player/`. 
