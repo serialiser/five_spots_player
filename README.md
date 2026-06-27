@@ -131,10 +131,31 @@ cd five-spots-player-1.0.0
 ./five-spots-player-1.0.0
 ```
 
-> Built on Ubuntu 22.04 (glibc 2.35), the binary runs on Ubuntu 22.04+ / Debian 12+
-> (x86-64). VLC must be installed on the target machine (`libvlc` is intentionally
-> not bundled).
+### Linux compatibility
 
+The binary is built on **Ubuntu 22.04 (glibc 2.35)** for **x86-64**. It runs on any
+distribution whose **glibc is ≥ 2.35**. On every distribution, **VLC must be installed** (`libvlc` is intentionally not bundled) and a graphical session (X11/Wayland) is required.
+
+| Distribution | glibc | Compatible |
+|---|---|:---:|
+| Ubuntu 24.04 LTS | 2.39 | ✅ |
+| Ubuntu 22.04 LTS | 2.35 | ✅ |
+| Ubuntu 20.04 LTS | 2.31 | ❌ |
+| Debian 13 (Trixie) | 2.41 | ✅ |
+| Debian 12 (Bookworm) | 2.36 | ✅ |
+| Debian 11 (Bullseye) | 2.31 | ❌ |
+| Linux Mint 21 / 22 | 2.35 / 2.39 | ✅ |
+| Linux Mint 20 | 2.31 | ❌ |
+| Pop!_OS 22.04 | 2.35 | ✅ |
+| Fedora 36+ | ≥ 2.35 | ✅ |
+| openSUSE Leap 15.6 / Tumbleweed | 2.38 / rolling | ✅ |
+| openSUSE Leap 15.5 | 2.31 | ❌ |
+| Arch / Manjaro (rolling) | recent | ✅ |
+| RHEL / Rocky / AlmaLinux 9 | 2.34 | ❌ |
+
+> To support older distributions (e.g. Debian 11, Ubuntu 20.04, RHEL 9), rebuild from an
+> older base by changing the `Dockerfile`'s first line to `FROM ubuntu:20.04` (glibc 2.31)
+> — the binary then runs on everything with glibc ≥ 2.31. 
 ## License
 
 Licensed under the Apache License, Version 2.0. See [LICENSE.md](LICENSE.md) for the full text.
