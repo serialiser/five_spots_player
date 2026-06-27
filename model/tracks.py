@@ -14,7 +14,7 @@ from pathlib import Path
 import aiohttp
 
 # Local imports
-from model.fip_apis import WEBRADIOS, GRAPHQL_API_URL, query_body
+from model.fip_apis import WEBRADIOS, WEBRADIO_PLAYLIST_NAMES, GRAPHQL_API_URL, query_body
 from player_settings import PlayerSettings, spotify_connect, USER_PLAYLIST_DEFAULT_NAME, USER_PLAYLIST_PREFIX
 
 BOOKMARKS = Path('data.json')
@@ -418,7 +418,8 @@ class Track:
         if settings.unique_playlist:
             playlist = USER_PLAYLIST_DEFAULT_NAME
         else:
-            playlist = USER_PLAYLIST_PREFIX + ' - ' + self._radio.split('_')[-1].lower()
+            suffix = WEBRADIO_PLAYLIST_NAMES.get(self._radio, self._radio.split('_')[-1].lower())
+            playlist = USER_PLAYLIST_PREFIX + ' - ' + suffix
         return playlist
 
 

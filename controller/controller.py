@@ -95,10 +95,13 @@ class DropdownMenu:
         ('ELECTRO', 'electro'),
         ('METAL', 'metal'),
         ('POP', 'pop'),
+        ('HIP-HOP', 'hiphop'),
+        ('SACRE FR.', 'sacrefrancais'),
+        ('CULTES', 'cultes'),
     ]
     BTN_W = 130
     BTN_H = 27
-    ITEM_H = 26
+    ITEM_H = 22
 
     def __init__(self, controller):
         self.controller = controller

@@ -1,6 +1,6 @@
 # Five spots player
 
-Unofficial player for **FIP internet radio** (10 stations) : the world's most eclectic radio. Sync tracks to **Spotify playlists** with one click. 
+Unofficial player for **FIP internet radio** (13 stations) : the world's most eclectic radio. Sync tracks to **Spotify playlists** with one click. 
 
 Available for Windows and Linux. Not tested on MacOS. 
 
@@ -11,7 +11,7 @@ _Five spots player is an independent desktop player for FIP radio, and is not af
 <img src="./assets/img/screenshot2.png" alt="Five spots player settings">
 
 ## Features
-* **Listen** to 10 FIP stations: FIP, Jazz, Rock, Groove, World, New Releases, Reggae, Electro, Metal, Pop
+* **Listen** to 13 FIP stations: FIP, Jazz, Rock, Groove, World, New Releases, Reggae, Electro, Metal, Pop, Hip-Hop, Sacré Français, Cultes
 * **Sync to Spotify**: like the currently playing track and sync it to a private Spotify playlist (one global playlist or one per station)
 * **Like**: liked tracks are saved locally in a JSON file
 * Streaming quality : AAC 192 kbps or midfi MP3
@@ -97,6 +97,43 @@ venv/bin/pyinstaller --clean -y five_spots_player.spec
 ```
 
 The output is in `dist/five-spots-player/`. 
+
+#### Build with Docker (Ubuntu 22.04 / Python 3.12)
+
+A `Dockerfile` is provided to build the Linux bundle in a clean Ubuntu 22.04 image
+with Python 3.12 (via the deadsnakes PPA), so the binary doesn't depend on the host setup.
+
+```bash
+docker build -t five-spots-build .
+```
+
+To extract the bundle, **package it as a `.tar.gz` inside the container, then copy that
+single file out**. Do **not** `docker cp` the whole `dist/` folder on Windows (its
+`pygame_ce` symlinks can't be created on NTFS without admin privilege, which aborts the
+copy and drops the executable), and do **not** redirect `tar` through PowerShell's `>`
+(it re-encodes the stream as UTF-16 and corrupts the archive — `gzip: not in gzip
+format`). The two-step approach below avoids both pitfalls (works in PowerShell and bash):
+
+```bash
+docker run --name fsp-pack five-spots-build sh -c 'cd /app/dist && tar czf /tmp/fsp.tar.gz five-spots-player-1.0.0'
+docker cp fsp-pack:/tmp/fsp.tar.gz ./dist/five-spots-player-1.0.0-linux-x86_64.tar.gz
+docker rm fsp-pack
+```
+
+> On Linux/macOS or Git Bash you can do it in one line instead:
+> `docker run --rm five-spots-build sh -c 'cd /app/dist && tar czf - five-spots-player-1.0.0' > dist/five-spots-player-1.0.0-linux-x86_64.tar.gz`
+
+Then on the target Linux machine:
+
+```bash
+tar xzf five-spots-player-1.0.0-linux-x86_64.tar.gz
+cd five-spots-player-1.0.0
+./five-spots-player-1.0.0
+```
+
+> Built on Ubuntu 22.04 (glibc 2.35), the binary runs on Ubuntu 22.04+ / Debian 12+
+> (x86-64). VLC must be installed on the target machine (`libvlc` is intentionally
+> not bundled).
 
 ## License
 
