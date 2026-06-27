@@ -107,21 +107,13 @@ with Python 3.12 (via the deadsnakes PPA), so the binary doesn't depend on the h
 docker build -t five-spots-build .
 ```
 
-To extract the bundle, **package it as a `.tar.gz` inside the container, then copy that
-single file out**. Do **not** `docker cp` the whole `dist/` folder on Windows (its
-`pygame_ce` symlinks can't be created on NTFS without admin privilege, which aborts the
-copy and drops the executable), and do **not** redirect `tar` through PowerShell's `>`
-(it re-encodes the stream as UTF-16 and corrupts the archive — `gzip: not in gzip
-format`). The two-step approach below avoids both pitfalls (works in PowerShell and bash):
+Extract the bundle and copy:
 
 ```bash
 docker run --name fsp-pack five-spots-build sh -c 'cd /app/dist && tar czf /tmp/fsp.tar.gz five-spots-player-1.0.0'
 docker cp fsp-pack:/tmp/fsp.tar.gz ./dist/five-spots-player-1.0.0-linux-x86_64.tar.gz
 docker rm fsp-pack
 ```
-
-> On Linux/macOS or Git Bash you can do it in one line instead:
-> `docker run --rm five-spots-build sh -c 'cd /app/dist && tar czf - five-spots-player-1.0.0' > dist/five-spots-player-1.0.0-linux-x86_64.tar.gz`
 
 Then on the target Linux machine:
 
