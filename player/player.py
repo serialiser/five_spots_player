@@ -11,7 +11,7 @@ import vlc
 
 # Local imports
 from player.constants import STREAM_URLS_MP3, STREAM_URLS_AAC, NETWORK_CACHING_MS
-from audio.capture import RATE, CHANNELS
+from audio.capture import CHANNELS
 from player_settings import PlayerSettings
 
 settings = PlayerSettings()
@@ -70,8 +70,8 @@ class Player:
             self._noop_cbs[2], self._noop_cbs[3],
             None,
         )
-        # Force decode to S16N stereo at RATE; VLC resamples automatically.
-        self._player.audio_set_format("S16N", RATE, CHANNELS)
+        # Force decode to S16N stereo at the sink's actual rate; VLC resamples.
+        self._player.audio_set_format("S16N", int(self._sink.samplerate), CHANNELS)
 
     def _run(self, stop_event):
         try:

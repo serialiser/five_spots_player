@@ -29,7 +29,13 @@ from audio.capture import AudioCapture
 logging.basicConfig(format='\n%(asctime)s - %(levelname)s: %(message)s', filename='app.log', encoding='utf-8',
                     level=logging.WARNING)
 
+# We never use pygame.mixer for sound (audio goes through VLC + sounddevice).
+# SDL otherwise opens an audio device at init, and on Linux that can hold the ALSA
+# device exclusively and make PortAudio fail with "Device unavailable" (-9985).
+# Tell SDL not to touch audio at all, before pygame.init().
+os.environ.setdefault('SDL_AUDIODRIVER', 'dummy')
 pygame.init()
+pygame.mixer.quit()  # belt-and-suspenders: release the mixer if it grabbed anything
 window = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
 pygame.display.set_caption(f'Five spots player')
 icon = pygame.image.load(resource_path('assets/img/logo.png'))

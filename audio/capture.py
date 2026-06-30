@@ -30,6 +30,11 @@ RATE = 44100             # forced via Player.audio_set_format; VLC resamples to 
 BLOCKSIZE = 1024         # frames per output callback (~23 ms @ 44.1 kHz)
 _MAX_QUEUED_CHUNKS = 48  # ceiling on buffered audio; bounds latency / drift build-up
 
+# Output devices whose name contains one of these route through the sound server
+# and open even when the raw ALSA hw device is busy/unavailable (Linux). Tried
+# after PortAudio's own default, which on Linux can point at an unusable hw device.
+_PREFERRED_DEVICE_NAMES = ('pipewire', 'pulse', 'default')
+
 
 class AudioCapture:
     """
@@ -51,6 +56,14 @@ class AudioCapture:
         self._lock = threading.Lock()
         self._last_feed = 0.0
         self._stream = None
+        self._tried = False      # one-shot: don't rescan devices on every station change
+        self.samplerate = RATE   # actual output rate; may switch to the device's
+        self._RATE = RATE        # native rate (read by Player and SpectrumAnalyzer)
+        # Open the output stream now, before any Player exists, so output_available
+        # reflects whether we can really drive the sound card. If it cannot open,
+        # the Player keeps VLC's own output and only the spectrum is disabled --
+        # the music still plays.
+        self._ensure_stream()
 
     # ------------------------------------------------------------------
     # Public API (consumed by SpectrumAnalyzer / controller / main)
@@ -58,8 +71,8 @@ class AudioCapture:
 
     @property
     def output_available(self):
-        """True when we can drive the sound card ourselves (sounddevice present)."""
-        return sd is not None
+        """True only when the output stream is actually open and can play audio."""
+        return self._stream is not None
 
     @property
     def is_active(self):
@@ -111,18 +124,55 @@ class AudioCapture:
     # Consumer side: sounddevice output callback (PortAudio thread)
     # ------------------------------------------------------------------
 
-    def _ensure_stream(self):
-        if self._stream is not None or sd is None:
-            return
+    def _candidate_devices(self):
+        """Output devices to try, best routes first: PortAudio's default, then any
+        PipeWire/Pulse/ALSA-default device. The named routes go through the sound
+        server and open even when the raw hw device reports 'unavailable'."""
+        candidates = [None]
         try:
-            self._stream = sd.OutputStream(
-                samplerate=RATE, channels=CHANNELS, dtype='float32',
-                blocksize=BLOCKSIZE, callback=self._output_cb,
-            )
-            self._stream.start()
+            for idx, dev in enumerate(sd.query_devices()):
+                if dev.get('max_output_channels', 0) < CHANNELS:
+                    continue
+                name = dev.get('name', '').lower()
+                if any(p in name for p in _PREFERRED_DEVICE_NAMES) and idx not in candidates:
+                    candidates.append(idx)
         except Exception as exc:
-            logging.warning(f"AudioCapture: could not open output stream: {exc}")
-            self._stream = None
+            logging.warning(f"AudioCapture: could not enumerate output devices: {exc}")
+        return candidates
+
+    def _candidate_rates(self, device):
+        """44.1 kHz first (simple FFT calibration), then the device's native rate."""
+        rates = [RATE]
+        try:
+            native = int(round(sd.query_devices(device, 'output')['default_samplerate']))
+            if native and native not in rates:
+                rates.append(native)
+        except Exception:
+            pass
+        if 48000 not in rates:
+            rates.append(48000)
+        return rates
+
+    def _ensure_stream(self):
+        if self._stream is not None or sd is None or self._tried:
+            return
+        self._tried = True
+        for device in self._candidate_devices():
+            for rate in self._candidate_rates(device):
+                try:
+                    stream = sd.OutputStream(
+                        device=device, samplerate=rate, channels=CHANNELS,
+                        dtype='float32', blocksize=BLOCKSIZE, callback=self._output_cb,
+                    )
+                    stream.start()
+                    self._stream = stream
+                    self.samplerate = rate
+                    self._RATE = rate
+                    logging.info(f"AudioCapture: output opened on device={device!r} at {rate} Hz")
+                    return
+                except Exception as exc:
+                    logging.warning(f"AudioCapture: device={device!r} @ {rate} Hz failed: {exc}")
+        self._stream = None
 
     def _output_cb(self, outdata, frames, time_info, status):
         try:
