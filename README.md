@@ -143,6 +143,7 @@ Licensed under the Apache License, Version 2.0. See [LICENSE.md](LICENSE.md).
 * **certifi** — Mozilla Public License 2.0 — https://github.com/certifi/python-certifi
 * **python-decouple** — MIT License — https://github.com/HBNetwork/python-decouple
 * **NumPy** — BSD 3-Clause License — https://github.com/numpy/numpy
+* **sounddevice** — Copyright (c) 2015-2023 Matthias Geier, MIT License — https://github.com/spatialaudio/python-sounddevice
 
 ### Fonts
 * **Merriweather** — Copyright 2016 The Merriweather Project Authors, SIL Open Font License 1.1 — https://github.com/SorkinType/Merriweather

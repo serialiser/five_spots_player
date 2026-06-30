@@ -5,3 +5,4 @@ aiohttp
 certifi
 python-decouple
 numpy
+sounddevice

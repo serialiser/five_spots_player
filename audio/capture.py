@@ -1,136 +1,155 @@
 """
-PCM capture via VLC audio callbacks (audio_set_callbacks / audio_set_format).
+Audio sink: plays the PCM tapped from the main VLC player and feeds the
+spectrum analyzer from those very same samples.
 
-A silent secondary VLC player decodes the same stream as the main player and
-routes its output to a Python callback instead of the hardware.  The callback
-fills a rolling float32 buffer that the SpectrumAnalyzer reads for FFT.
+The main Player (player/player.py) decodes the stream and, instead of letting
+VLC write to the sound card, hands every decoded buffer to AudioCapture.feed().
+AudioCapture queues those frames and a sounddevice output stream pulls them to
+the speakers.  The FFT buffer the SpectrumAnalyzer reads is filled from the
+frames at the moment they are sent to the device, so the display matches what is
+actually heard -- a single decode and a single connection, with no second stream
+to drift out of phase.
 """
+import collections
 import ctypes
 import logging
 import threading
+import time
 
 import numpy as np
-import vlc
 
-from player.constants import STREAM_URLS_MP3, STREAM_URLS_AAC, NETWORK_CACHING_MS
-from player_settings import PlayerSettings
+try:
+    import sounddevice as sd
+except Exception as exc:  # pragma: no cover - missing PortAudio / sounddevice
+    sd = None
+    logging.warning(f"sounddevice unavailable, falling back to VLC output: {exc}")
 
-FFT_SIZE = 2048
-_CHANNELS = 2
-_RATE = 44100   # forced via audio_set_format; VLC will resample if needed
-
-# --------------------------------------------------------------------------
-# ctypes callback signatures (mirror libvlc_audio_*_cb typedefs)
-# --------------------------------------------------------------------------
-_PlayCb   = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_uint, ctypes.c_int64)
-_PauseCb  = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_int64)
-_ResumeCb = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_int64)
-_FlushCb  = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_int64)
-_DrainCb  = ctypes.CFUNCTYPE(None, ctypes.c_void_p)
+FFT_SIZE = 4096
+CHANNELS = 2
+RATE = 44100             # forced via Player.audio_set_format; VLC resamples to it
+BLOCKSIZE = 1024         # frames per output callback (~23 ms @ 44.1 kHz)
+_MAX_QUEUED_CHUNKS = 48  # ceiling on buffered audio; bounds latency / drift build-up
 
 
 class AudioCapture:
     """
-    Feeds a rolling PCM buffer from a silent VLC player using audio callbacks.
-    Call start(station) each time the station changes.
+    Persistent audio sink shared by the controller and the SpectrumAnalyzer.
+
+    It outlives station changes: the Player is recreated on every change and
+    feeds whichever AudioCapture instance it was handed.  Producer side (feed)
+    runs on VLC's audio thread; consumer side (_output_cb) runs on PortAudio's
+    thread; the two meet over a lock-protected chunk queue.
     """
 
-    def __init__(self):
-        self._buffer = np.zeros(FFT_SIZE, dtype=np.float32)
-        self._lock = threading.Lock()
-        self._active = False
+    # Exposed so SpectrumAnalyzer can size its FFT bins to the real sample rate.
+    _RATE = RATE
 
-        # VLC objects, kept alive to prevent GC
-        self._instance = None
-        self._player = None
-        self._play_cb = None      # ctypes keeps them alive via attribute refs
-        self._noop_cbs = []
+    def __init__(self):
+        self._fft_buffer = np.zeros(FFT_SIZE, dtype=np.float32)
+        self._queue = collections.deque(maxlen=_MAX_QUEUED_CHUNKS)
+        self._residual = np.zeros((0, CHANNELS), dtype=np.float32)
+        self._lock = threading.Lock()
+        self._last_feed = 0.0
+        self._stream = None
 
     # ------------------------------------------------------------------
-    # Public API
+    # Public API (consumed by SpectrumAnalyzer / controller / main)
     # ------------------------------------------------------------------
 
     @property
+    def output_available(self):
+        """True when we can drive the sound card ourselves (sounddevice present)."""
+        return sd is not None
+
+    @property
     def is_active(self):
-        return self._active
+        return (time.monotonic() - self._last_feed) < 0.5
 
     def get_samples(self):
         with self._lock:
-            return self._buffer.copy()
+            return self._fft_buffer.copy()
 
-    def start(self, station: str):
-        """Start (or restart) PCM capture for the given station key."""
-        self._stop_player()
+    def start(self, station: str = None):
+        """Open the output stream (once) and drop stale audio on a station change."""
+        self.flush()
+        self._last_feed = 0.0
+        self._ensure_stream()
 
-        settings = PlayerSettings()
-        urls = STREAM_URLS_MP3 if settings.quality == 'midfi' else STREAM_URLS_AAC
-        url = urls.get(station)
-        if not url:
-            return
-
-        try:
-            self._launch(url)
-        except Exception as exc:
-            logging.warning(f"AudioCapture.start failed: {exc}")
+    def flush(self):
+        with self._lock:
+            self._queue.clear()
+            self._residual = np.zeros((0, CHANNELS), dtype=np.float32)
 
     def close(self):
-        self._stop_player()
-
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
-
-    def _stop_player(self):
-        if self._player:
+        if self._stream is not None:
             try:
-                self._player.stop()
+                self._stream.stop()
+                self._stream.close()
             except Exception:
                 pass
-            self._player = None
-        self._active = False
+            self._stream = None
 
-    def _launch(self, url: str):
-        instance = vlc.Instance("--quiet", "--no-video")
-        player = instance.media_player_new()
-        media = instance.media_new(url)
-        # Match the main player's buffering so the spectrum stays in sync.
-        media.add_option(f":network-caching={NETWORK_CACHING_MS}")
-        player.set_media(media)
+    # ------------------------------------------------------------------
+    # Producer side: called from the Player's VLC audio thread
+    # ------------------------------------------------------------------
 
-        # Build ctypes callbacks — must stay referenced so GC won't free them
-        def play_cb(*args):
-            # args: (opaque, samples, count, pts) — only samples and count used
-            samples, count = args[1], args[2]
-            n_shorts = count * _CHANNELS
-            try:
-                addr = ctypes.cast(samples, ctypes.c_void_p).value
-                raw = (ctypes.c_int16 * n_shorts).from_address(addr)
-                arr = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
-                mono = arr.reshape(-1, _CHANNELS).mean(axis=1)
-                n = len(mono)
-                with self._lock:
-                    self._buffer = np.roll(self._buffer, -n)
-                    self._buffer[-n:] = mono[:FFT_SIZE]
-            except Exception as exc:
-                logging.debug(f"AudioCapture play_cb: {exc}")
+    def feed(self, samples, count):
+        """Convert one VLC S16N stereo buffer to float32 frames and queue it."""
+        try:
+            n_shorts = count * CHANNELS
+            addr = ctypes.cast(samples, ctypes.c_void_p).value
+            raw = (ctypes.c_int16 * n_shorts).from_address(addr)
+            frames = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
+            frames = frames.reshape(-1, CHANNELS)
+            with self._lock:
+                self._queue.append(frames)
+            self._last_feed = time.monotonic()
+        except Exception as exc:
+            logging.debug(f"AudioCapture.feed: {exc}")
 
-        self._play_cb  = _PlayCb(play_cb)
-        self._noop_cbs = [
-            _PauseCb(lambda *_: None), _ResumeCb(lambda *_: None),
-            _FlushCb(lambda *_: None), _DrainCb(lambda *_: None),
-        ]
+    # ------------------------------------------------------------------
+    # Consumer side: sounddevice output callback (PortAudio thread)
+    # ------------------------------------------------------------------
 
-        player.audio_set_callbacks(
-            self._play_cb,
-            self._noop_cbs[0], self._noop_cbs[1],
-            self._noop_cbs[2], self._noop_cbs[3],
-            None,
-        )
-        # Force decode to S16N stereo at _RATE — VLC resamples automatically
-        player.audio_set_format("S16N", _RATE, _CHANNELS)
+    def _ensure_stream(self):
+        if self._stream is not None or sd is None:
+            return
+        try:
+            self._stream = sd.OutputStream(
+                samplerate=RATE, channels=CHANNELS, dtype='float32',
+                blocksize=BLOCKSIZE, callback=self._output_cb,
+            )
+            self._stream.start()
+        except Exception as exc:
+            logging.warning(f"AudioCapture: could not open output stream: {exc}")
+            self._stream = None
 
-        player.play()
-
-        self._instance = instance
-        self._player = player
-        self._active = True
+    def _output_cb(self, outdata, frames, time_info, status):
+        try:
+            filled = 0
+            with self._lock:
+                while filled < frames:
+                    if len(self._residual):
+                        take = min(frames - filled, len(self._residual))
+                        outdata[filled:filled + take] = self._residual[:take]
+                        self._residual = self._residual[take:]
+                        filled += take
+                    elif self._queue:
+                        self._residual = self._queue.popleft()
+                    else:
+                        break
+                if filled < frames:
+                    outdata[filled:] = 0.0  # underrun -> brief silence
+                # Fill the FFT buffer from exactly what is going to the device,
+                # so the spectrum is aligned with what is heard.
+                if filled:
+                    mono = outdata[:filled].mean(axis=1)
+                    n = len(mono)
+                    if n >= FFT_SIZE:
+                        self._fft_buffer = mono[-FFT_SIZE:].astype(np.float32)
+                    else:
+                        self._fft_buffer = np.roll(self._fft_buffer, -n)
+                        self._fft_buffer[-n:] = mono
+        except Exception as exc:
+            logging.debug(f"AudioCapture._output_cb: {exc}")
+            outdata.fill(0.0)

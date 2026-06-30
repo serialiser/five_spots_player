@@ -12,6 +12,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         vlc libvlc-dev \
         # SDL/pygame s'appuient sur ces libs au runtime de l'analyse
         libsdl2-2.0-0 libsdl2-image-2.0-0 libsdl2-mixer-2.0-0 libsdl2-ttf-2.0-0 \
+        # PortAudio (sounddevice) : le hook PyInstaller récupère la lib système et
+        # l'embarque dans le livrable, donc elle doit être présente à la compilation
+        libportaudio2 \
         # compression UPX (le spec a upx=True)
         upx-ucl \
         binutils && \

@@ -48,7 +48,7 @@ class Controller:
         return self._stream
 
     def create_stream(self, station):
-        self._stream = Player(station)
+        self._stream = Player(station, sink=self._audio_capture)
         self._current_station = station
         self._state = 'play'
         if self._audio_capture is not None:

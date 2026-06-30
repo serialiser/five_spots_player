@@ -1,7 +1,7 @@
-# Network buffering depth (ms) applied identically to the main player and the
-# silent capture player. Matching the value keeps their buffering aligned so the
-# spectrum analyzer stays close to what is heard. Lower = tighter sync and less
-# latency, but more prone to dropouts on a poor connection (VLC default: 1000).
+# Network buffering depth (ms) for the player. VLC fills this buffer before
+# playback starts; it also sets the baseline output latency, since the same
+# decoded PCM feeds both the speakers and the spectrum. Lower = less latency,
+# but more prone to dropouts on a poor connection (VLC default: 1000).
 NETWORK_CACHING_MS = 500
 
 # webradios urls midfi (mp3)
