@@ -1,8 +1,7 @@
 # Five spots player
 
 Unofficial player for **FIP internet radio** (13 stations), the world's most eclectic radio.   
-**Explore new music**, uncover hidden gems, and sync tracks to **Spotify playlists** with one click. 
-
+**Explore new music**, uncover hidden gems, and sync tracks to **Spotify playlists** with one click.  
 Available for Windows and Linux.
 
 _Five spots player is an independent desktop player for FIP radio, and is not affiliated with, endorsed by, or sponsored by Radio France or FIP. All trademarks, logos, and audio content remain the property of their respective owners. Audio streams are delivered directly from Radio France servers. This application does not store, retransmit, or modify these streams._
