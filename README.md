@@ -106,8 +106,7 @@ The output is in `dist/five-spots-player/`.
 
 #### Build with Docker (Ubuntu 22.04 / Python 3.12)
 
-A `Dockerfile` is provided to build the Linux bundle in a clean Ubuntu 22.04 image
-with Python 3.12 (via the deadsnakes PPA), so the binary doesn't depend on the host setup.
+The `Dockerfile` at the root builds the Linux release from any OS (Windows included), in a clean Ubuntu 22.04 / Python 3.12 image — it only produces the bundle, it does not run the app.
 
 ```bash
 docker build -t five-spots-build .
