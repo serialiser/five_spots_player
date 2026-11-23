@@ -121,7 +121,7 @@ def spotify_connect():
             auth_manager=SpotifyPKCE(
                 client_id=SPOTIPY_CLIENT_ID,
                 redirect_uri=SPOTIPY_REDIRECT_URI,
-                scope="playlist-read-private playlist-modify-private"))
+                scope="playlist-read-private playlist-modify-private playlist-modify-public"))
         me = spot.me()
         if not me or 'id' not in me:
             logging.error("Spotify: unexpected /me response")
