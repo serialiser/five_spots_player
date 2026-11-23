@@ -548,37 +548,40 @@ class Song:
 
     @staticmethod
     def get_tracks_id_from_playlist(playlist_id):
-        results = sp.playlist_items(playlist_id, fields="items(track(id))")
-        tracks_ids = [i['track']['id'] for i in results['items']]
+        """
+        Ids of all tracks in a playlist (every page).
+        Spotify now returns each entry's object under 'item' (formerly 'track'): both are accepted.
+        Local or removed tracks (None) are skipped.
+        """
+        tracks_ids = []
+        results = sp.playlist_items(playlist_id, fields="items(item(id),track(id)),next")
+        while results:
+            for entry in results.get('items') or []:
+                obj = (entry or {}).get('item') or (entry or {}).get('track')
+                if obj and obj.get('id'):
+                    tracks_ids.append(obj['id'])
+            results = sp.next(results) if results.get('next') else None
         return tracks_ids
 
     @staticmethod
     def get_or_create_playlist(name):
         """
-        Get a playlist id if it exists
+        Get a playlist id, creating the playlist if it doesn't exist
         :param name: name of the playlist
         :return: playlist id / None if failed
         """
         playlists = sp.current_user_playlists()
+        while playlists:
+            for playlist in playlists.get('items') or []:
+                if playlist and playlist.get('name') == name:
+                    return playlist['id']
+            playlists = sp.next(playlists) if playlists.get('next') else None
 
-        if playlists:
-            try:
-                playlists_names = [playlist['name'] for playlist in playlists['items']]
-            except TypeError as e:
-                logging.error(f"TypeError in get_or_create_playlist: {e}", exc_info=True)
-                playlists_names = []
-
-            if name not in playlists_names:
-                # Create playlist
-                today = datetime.date.today().strftime("%B %d, %Y")
-                playlist = sp.user_playlist_create(spotify_user_id, name, public=False, collaborative=False,
+        # Not found on any page: create it
+        today = datetime.date.today().strftime("%B %d, %Y")
+        playlist = sp.current_user_playlist_create(name, public=False, collaborative=False,
                                                    description=f"Created by Five spots player on {today}")
-                return playlist['id']
-            else:
-                # Get playlist
-                for playlist in (playlists['items']):
-                    if playlist['name'] == name:
-                        return playlist['id']
+        return playlist['id'] if playlist else None
 
     @staticmethod
     def replace_quotes(s):
